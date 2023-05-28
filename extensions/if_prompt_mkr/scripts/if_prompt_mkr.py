@@ -3,112 +3,121 @@ import gradio as gr
 import os
 import requests
 import json
-from modules import images
+
+from modules import script_callbacks, shared
 from modules.processing import Processed, process_images
 from modules.shared import state
 
-params = {
-    'selected_character': None,
-    'pre_prompt': 'has nothing yet',
-    'pre_prompt_text': 'this text should update when the character is changed',
-    'prompt_prefix': 'Style-SylvaMagic, ',
-    'input_prompt': '(Dark elf empress:1.2), enchanted Forrest',
-    'negative_prompt': '(worst quality, low quality:1.3)',
-    'prompt_subfix': '(rim lighting,:1.1) two tone lighting, <lora:epiNoiseoffset_v2:0.8>',
-}
+script_dir = scripts.basedir()
+#script_name = os.path.splitext(os.path.basename(__file__))[0]
+
+#might Add a way to select a character from the Oobabooga character Directory directly
+def on_ui_settings():
+    section=("ifpromptmkr", "iFpromptMKR")
+    shared.opts.add_option("character_path", shared.OptionInfo(
+      "", "Select an iF or other SD prompt maker character you want to use inside the Oobabooga character Directory json only", section=section))
+
 
 script_dir = scripts.basedir()
-print(f"Script dir: {script_dir}")
 
-character_dir = os.path.join(script_dir, "characters")
-print(f"Character dir: {character_dir}")
+def on_ui_settings():
+    section=("ifpromptmkr", "iFpromptMKR")
+    shared.opts.add_option("character_path", shared.OptionInfo(
+      "", "Select an iF or other SD prompt maker character you want to use inside the Oobabooga character Directory json only", section=section))
+    shared.opts.add_option("stopping_string", shared.OptionInfo(
+      "", 'Write a custom stopping string such as i.e for Alpaca use "### Assistant:" or your name i.e "ImpactFrames:"', section=section))
+  
+script_callbacks.on_ui_settings(on_ui_settings)
 
-def get_characters(character_dir):
-    characters = []
+def get_character_list():
+    # Get character path from options
+    character_path = shared.opts.data.get("character_path", None)
 
-    for json_file in os.listdir(character_dir):
-        with open(os.path.join(character_dir, json_file), 'r') as f:
-            try:
-                data = json.load(f)
-            except json.decoder.JSONDecodeError as e:
-                print(f"Error parsing {json_file}: {e}")
-                continue
-            try:
-                char_name = str(data["char_name"])
-                example_dialogue = str(data["example_dialogue"])
-                characters.append((char_name, example_dialogue))
-            except KeyError as e:
-                print(f"Error parsing {json_file}: {e}")
-                continue
+    # Check if the character path is not None and exists
+    if character_path and os.path.exists(character_path):
+        # Get list of all json files
+        return [os.path.splitext(f)[0] for f in os.listdir(character_path) if f.endswith('.json')]
+    else:
+        return []
 
-    return characters
 
-characters = get_characters(character_dir)
+class Script(scripts.Script):
 
-class ifpromptmkrScript(scripts.Script): 
-    
-    
     def title(self):
-        return "if prompt mkr"
-    
+        return "iF_prompt_MKR"
 
     def show(self, is_img2img):
-        return scripts.AlwaysVisible
+        return True
 
     def ui(self, is_img2img):
 
-        with gr.Accordion('if prompt mkr', open=False):
-            with gr.Column():
-                selected_character = gr.Dropdown(
-                    label="characters", 
-                    choices=[char[0] for char in characters],
-                    type="index", 
-                    elem_id="if_prompt_mkr_dropdown",
-                    default=0
-                )
-                prompt_prefix = gr.Textbox(lines=1, placeholder=params['prompt_prefix'], value=params['prompt_prefix'], label="Prompt Prefix")
-                input_prompt = gr.Textbox(lines=1, placeholder=params['input_prompt'], value=params['input_prompt'], label="Input Prompt")
-                prompt_subfix = gr.Textbox(lines=1, placeholder=params['prompt_subfix'], value=params['prompt_subfix'], label="Subfix for adding Loras (optional)")
-                negative_prompt = gr.Textbox(lines=2, placeholder=params['negative_prompt'], value=params['negative_prompt'], label="Negative Prompt")
-                
-            selected_character.change(lambda x: (
-                params.update({'pre_prompt_text':characters[x][1]}), 
-                print(f"Updated pre_prompt_text: {params['pre_prompt_text']}")), 
-            selected_character, None)
-            prompt_prefix.change(lambda x: params.update({"prompt_prefix": x}), prompt_prefix, None)
-            input_prompt.change(lambda x: params.update({"input_prompt": x}), input_prompt, None)
-            prompt_subfix.change(lambda x: params.update({"prompt_subfix": x}), prompt_subfix, None)
-            negative_prompt.change(lambda x: params.update({"negative_prompt": x}), negative_prompt, None)
-            
-        return [prompt_prefix, input_prompt, negative_prompt, prompt_subfix, selected_character]
+        # Get list of character names from json files in the character directory
+        character_list = get_character_list()
 
+        params = {
+            'selected_character': character_list if character_list else ['if_ai_SD', 'iF_Ai_SD_b', 'iF_Ai_SD_NSFW'],
+            'prompt_prefix': 'Style-SylvaMagic, ',
+            'input_prompt': '(Dark elf empress:1.2), enchanted Forrest',
+            'negative_prompt': '(worst quality, low quality:1.3)',
+            'prompt_subfix': '(rim lighting,:1.1) two tone lighting, <lora:epiNoiseoffset_v2:0.8>',
+        }
 
-
-    def run(self, p, prompt_prefix, input_prompt, negative_prompt, prompt_subfix, selected_character, *args, **kwargs):
-        if selected_character is not None:
-            generated_text = self.generate_text(input_prompt)
-            prompt_generated_text = prompt_prefix + ' ' + generated_text + ' ' + prompt_subfix
-
-            
-            p.prompt = prompt_generated_text
-            p.negative_prompt = negative_prompt
-            return self.process_images(p)
-
-    
-    def generate_text(self, prompt):
-        print("Generating text...")
-        pre_prompt = params['pre_prompt_text']
         
+        selected_character = gr.inputs.Dropdown(label="characters", choices=params['selected_character'])
+        prompt_prefix = gr.inputs.Textbox(lines=1, placeholder=params['prompt_prefix'], label="Prompt Prefix")
+        input_prompt = gr.inputs.Textbox(lines=1, placeholder=params['input_prompt'], label="Input Prompt")
+        prompt_subfix = gr.inputs.Textbox(lines=1, placeholder=params['prompt_subfix'], label="Subfix for adding Loras (optional)")
+        negative_prompt = gr.inputs.Textbox(lines=2, placeholder=params['negative_prompt'], label="Negative Prompt")
+
+        selected_character.change(lambda x: params.update({'selected_character': x}), selected_character, None)
+        prompt_prefix.change(lambda x: params.update({'prompt_prefix': x}), prompt_prefix, None)
+        input_prompt.change(lambda x: params.update({'input_prompt': x}), input_prompt, None)
+        prompt_subfix.change(lambda x: params.update({'prompt_subfix': x}), prompt_subfix, None)
+        negative_prompt.change(lambda x: params.update({'negative_prompt': x}), negative_prompt, None)
+     
+        return [selected_character, prompt_prefix, input_prompt, negative_prompt, prompt_subfix]
+
+
+    def run(self, p, selected_character ,prompt_prefix, input_prompt, negative_prompt, prompt_subfix, *args, **kwargs):
+        generated_text = self.generate_text(selected_character, input_prompt)
+        combined_prompt = prompt_prefix + ' ' + generated_text + ' ' + prompt_subfix
+        p.prompt = combined_prompt
+        p.negative_prompt = negative_prompt
+        p.prompt_subfix = prompt_subfix
+        p.selected_character = selected_character
+        p.input_prompt = input_prompt
+        p.generate_text = generated_text
+        return process_images(p)
+ 
+
+  
+    def generate_text(self, character, prompt):
+
+        print("Generating text...")
+        stopping = shared.opts.data.get("stopping_string", None)
+        if not stopping:
+            stopping = "### Assistant:"
+
         data = {
-            'prompt': pre_prompt + ' ' + prompt,
-            'max_new_tokens': 140,
+            'user_input': prompt,
+            'history': {'internal': [], 'visible': []},  # Add this line
+            'mode': "chat",
+            'character': character,
+            'instruction_template': 'Wizard-Mega',
+            'regenerate': False,
+            '_continue': False,
+            'stop_at_newline': False,
+            'chat_prompt_size': 2048,
+            'chat_generation_attempts': 1,
+            'chat-instruct_command': 'Continue the chat dialogue below. Write a single reply for the character "<|character|>".\n\n<|prompt|>',
+            'max_new_tokens': 80,
             'do_sample': True,
             'temperature': 0.3,
+            'top_k': 30,
             'top_p': 0.9,
             'typical_p': 1,
-            'repetition_penalty': 1,
+            'repetition_penalty': 1.1,
             'encoder_repetition_penalty': 1.0,
-            'top_k': 30,
             'min_length': 0,
             'no_repeat_ngram_size': 0,
             'num_beams': 1,
@@ -117,26 +126,29 @@ class ifpromptmkrScript(scripts.Script):
             'early_stopping': False,
             'seed': -1,
             'add_bos_token': True,
-            'custom_stopping_strings': ["You:",],
+            'custom_stopping_strings': [stopping,],
             'truncation_length': 2048,
             'ban_eos_token': False,
         }  
         headers = {     
-        "Content-Type": "application/json" 
+            "Content-Type": "application/json" 
         } 
 
-        response = requests.post("http://127.0.0.1:5000/api/v1/generate",
-                                 data=json.dumps(data), headers=headers)
+        response = requests.post("http://127.0.0.1:5000/api/v1/chat",
+                            data=json.dumps(data), headers=headers)
+
 
         if response.status_code == 200:
-            results = json.loads(response.content)["results"]
-            generated_text = ""
-            for result in results:
-                generated_text += result["text"]
+            print (response.content)
+            results = json.loads(response.content)['results']
+            if results:
+                history = results[0]['history']
+                if history:
+                    visible = history['visible']
+                    if visible:
+                        generated_text = visible[-1][1]
             return generated_text
-        else:
-            return f"Request failed with status code {response.status_code}."
-    
+        
     def process_images(self, p):
         state.job_count = 0
         state.job_count += p.n_iter
@@ -144,3 +156,4 @@ class ifpromptmkrScript(scripts.Script):
         proc = process_images(p)
 
         return Processed(p, [proc.images[0]], p.seed, "", all_prompts=proc.all_prompts, infotexts=proc.infotexts)
+        
