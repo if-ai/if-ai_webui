@@ -11,12 +11,6 @@ from modules.shared import state
 script_dir = scripts.basedir()
 #script_name = os.path.splitext(os.path.basename(__file__))[0]
 
-#might Add a way to select a character from the Oobabooga character Directory directly
-def on_ui_settings():
-    section=("ifpromptmkr", "iFpromptMKR")
-    shared.opts.add_option("character_path", shared.OptionInfo(
-      "", "Select an iF or other SD prompt maker character you want to use inside the Oobabooga character Directory json only", section=section))
-
 
 script_dir = scripts.basedir()
 
@@ -26,7 +20,26 @@ def on_ui_settings():
       "", "Select an iF or other SD prompt maker character you want to use inside the Oobabooga character Directory json only", section=section))
     shared.opts.add_option("stopping_string", shared.OptionInfo(
       "", 'Write a custom stopping string such as i.e for Alpaca use "### Assistant:" or your name i.e "ImpactFrames:"', section=section))
-  
+    shared.opts.add_option("xtokens", shared.OptionInfo(
+      80, "Set the number of tokens to generate", gr.Number, section=section
+      ))
+    shared.opts.add_option("xtemperature", shared.OptionInfo(
+      0.7, "Set the temperature of the generated text", gr.Slider, {"minimum": 0, "maximum": 1, "step": 0.05}, section=section
+      ))
+    shared.opts.add_option("xtop_k", shared.OptionInfo(
+      30, "Set the top k of the generated text", gr.Number, section=section
+      ))
+    shared.opts.add_option("xtop_p", shared.OptionInfo(
+      0.9, "Set the top p of the generated text", gr.Slider, {"minimum": 0, "maximum": 1, "step": 0.1}, section=section
+      ))
+    shared.opts.add_option("xtypical_p", shared.OptionInfo(
+      1, "Set the typical p of the generated text", gr.Slider, {"minimum": 0, "maximum": 1, "step": 0.1}, section=section
+      ))
+    shared.opts.add_option("xrepetition_penalty", shared.OptionInfo(
+      1.2, "Set the repetition penalty of the", gr.Slider, {"minimum": 0, "maximum": 2, "step": 0.1}, section=section
+      ))
+      
+
 script_callbacks.on_ui_settings(on_ui_settings)
 
 def get_character_list():
@@ -59,7 +72,8 @@ class Script(scripts.Script):
             'prompt_prefix': 'Style-SylvaMagic, ',
             'input_prompt': '(Dark elf empress:1.2), enchanted Forrest',
             'negative_prompt': '(worst quality, low quality:1.3)',
-            'prompt_subfix': '(rim lighting,:1.1) two tone lighting, <lora:epiNoiseoffset_v2:0.8>',
+            'prompt_subfix': '(rim lighting,:1.1) two tone lighting, <lora:epiNoiseoffset_v2:0.8>'
+
         }
 
         
@@ -68,6 +82,7 @@ class Script(scripts.Script):
         input_prompt = gr.inputs.Textbox(lines=1, placeholder=params['input_prompt'], label="Input Prompt")
         prompt_subfix = gr.inputs.Textbox(lines=1, placeholder=params['prompt_subfix'], label="Subfix for adding Loras (optional)")
         negative_prompt = gr.inputs.Textbox(lines=2, placeholder=params['negative_prompt'], label="Negative Prompt")
+        
 
         selected_character.change(lambda x: params.update({'selected_character': x}), selected_character, None)
         prompt_prefix.change(lambda x: params.update({'prompt_prefix': x}), prompt_prefix, None)
@@ -97,6 +112,13 @@ class Script(scripts.Script):
         stopping = shared.opts.data.get("stopping_string", None)
         if not stopping:
             stopping = "### Assistant:"
+        xtokens = shared.opts.data.get("xtokens", 80)
+        xtemperature = shared.opts.data.get("xtemperature", 0.7)
+        xtop_k = shared.opts.data.get("xtop_k", 30)
+        xtop_p = shared.opts.data.get("xtop_p", 0.9)
+        xtypical_p = shared.opts.data.get("xtypical_p", 0.9)
+        xrepetition_penalty = shared.opts.data.get("xrepetition_penalty", 1.2)
+        
 
         data = {
             'user_input': prompt,
@@ -110,13 +132,13 @@ class Script(scripts.Script):
             'chat_prompt_size': 2048,
             'chat_generation_attempts': 1,
             'chat-instruct_command': 'Continue the chat dialogue below. Write a single reply for the character "<|character|>".\n\n<|prompt|>',
-            'max_new_tokens': 80,
+            'max_new_tokens': xtokens,
+            'temperature': xtemperature,
+            'top_k': xtop_k,
+            'top_p': xtop_p,
             'do_sample': True,
-            'temperature': 0.3,
-            'top_k': 30,
-            'top_p': 0.9,
-            'typical_p': 1,
-            'repetition_penalty': 1.1,
+            'typical_p': xtypical_p,
+            'repetition_penalty': xrepetition_penalty,
             'encoder_repetition_penalty': 1.0,
             'min_length': 0,
             'no_repeat_ngram_size': 0,
